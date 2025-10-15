@@ -1,3 +1,8 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'dart:html' as html; // ignore: avoid_web_libraries_in_flutter
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -12,8 +17,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _storage = const FlutterSecureStorage();
 
   bool _isPasswordVisible = false;
@@ -27,7 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // ✅ Email/Password Login
+  // ===================== Email/Password Login =====================
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -41,16 +46,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (response['success'] == true && response['token'] != null) {
         await _storage.write(key: 'auth_token', value: response['token']);
+        if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('✅ Welcome ${response['user']['name']}!')),
         );
         Navigator.pushReplacementNamed(context, '/home');
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('❌ ${response['message'] ?? 'Login failed'}')),
         );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('⚠️ Something went wrong. Please try again.')),
       );
@@ -59,50 +68,63 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ✅ Google Sign-In
+  // ===================== Google Login =====================
   Future<void> _googleLogin() async {
-    // If you’re using desktop/web, keep localhost
-    final backendUrl = 'http://localhost:5000/auth/google';
-    const callbackUrlScheme = 'myapp'; // must match your backend redirect scheme
+  setState(() => _isGoogleLoading = true);
 
-    try {
-      setState(() => _isGoogleLoading = true);
+  try {
+    String? token;
 
-      // Start the OAuth2 authentication
+    if (!kIsWeb) {
+      // Mobile (Android/iOS)
       final result = await FlutterWebAuth2.authenticate(
-        url: backendUrl,
-        callbackUrlScheme: callbackUrlScheme,
+        url: 'http://localhost:5000/auth/google',
+        callbackUrlScheme: 'myapp', // your mobile scheme
       );
+      token = Uri.parse(result).queryParameters['token'];
+    } else {
+      // Web
+      final tokenCompleter = Completer<String>();
 
-      // Extract token
-      final uri = Uri.parse(result);
-      final token = uri.queryParameters['token'];
-
-      if (token != null) {
-        await _storage.write(key: 'auth_token', value: token);
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ Google login successful!')),
-        );
-
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        if (!mounted) return;
-             ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('❌ Google login failed (no token).')),
-             );   
+      void listener(html.Event event) {
+        final messageEvent = event as html.MessageEvent;
+        if (messageEvent.data != null && messageEvent.data['token'] != null) {
+          tokenCompleter.complete(messageEvent.data['token']);
+          html.window.removeEventListener('message', listener);
+        }
       }
-    } catch (e) {
-      debugPrint('Google login error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ Error: ${e.toString()}')),
-      );
-    } finally {
-      setState(() => _isGoogleLoading = false);
-    }
-  }
 
+      html.window.addEventListener('message', listener);
+
+      html.window.open('http://localhost:5000/auth/google', '_blank');
+      token = await tokenCompleter.future;
+    }
+
+    if (token != null) {
+      await _storage.write(key: 'auth_token', value: token);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Google login successful!')),
+      );
+      Navigator.pushReplacementNamed(context, '/home');
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Google login failed (no token).')),
+      );
+    }
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('⚠️ Google login error: $e')),
+    );
+  } finally {
+    setState(() => _isGoogleLoading = false);
+  }
+}
+
+  // ===================== Build UI =====================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -127,146 +149,67 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 40),
 
                 // Email
-                TextFormField(
+                _buildTextField(
                   controller: _emailController,
-                  style: const TextStyle(color: Colors.white),
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    labelStyle: const TextStyle(color: Colors.white70),
-                    prefixIcon: const Icon(Icons.email_outlined, color: Colors.white),
-                    filled: true,
-                    fillColor: const Color(0xFF2C2C2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
+                  label: 'Email',
+                  prefixIcon: Icons.email_outlined,
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                      return 'Enter a valid email';
-                    }
+                    if (value == null || value.isEmpty) return 'Please enter your email';
+                    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'Enter a valid email';
                     return null;
                   },
+                  keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 16),
 
                 // Password
-                TextFormField(
+                _buildTextField(
                   controller: _passwordController,
+                  label: 'Password',
+                  prefixIcon: Icons.lock_outline,
                   obscureText: !_isPasswordVisible,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    labelStyle: const TextStyle(color: Colors.white70),
-                    prefixIcon: const Icon(Icons.lock_outline, color: Colors.white),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible
-                            ? Icons.visibility
-                            : Icons.visibility_off,
-                        color: Colors.white70,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                      color: Colors.white70,
                     ),
-                    filled: true,
-                    fillColor: const Color(0xFF2C2C2E),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
+                    if (value == null || value.isEmpty) return 'Please enter your password';
+                    if (value.length < 6) return 'Password must be at least 6 characters';
                     return null;
                   },
                 ),
                 const SizedBox(height: 24),
 
                 // Login Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _isLoading ? null : _login,
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                            'Login',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
+                _buildButton(
+                  text: 'Login',
+                  loading: _isLoading,
+                  onPressed: _login,
+                  backgroundColor: Colors.teal,
                 ),
                 const SizedBox(height: 16),
 
-                // Google Login
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: _isGoogleLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Image.asset('assets/google_logo.png', height: 24),
-                    label: const Text(
-                      'Log in with Google',
-                      style: TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white54),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: _isGoogleLoading ? null : _googleLogin,
-                  ),
+                // Google Login Button
+                _buildButton(
+                  text: 'Log in with Google',
+                  loading: _isGoogleLoading,
+                  icon: Image.asset('assets/google_logo.png', height: 24),
+                  onPressed: _googleLogin,
+                  outlined: true,
                 ),
-
                 const SizedBox(height: 20),
 
+                // Sign up link
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
-                      "Don't have an account?",
-                      style: TextStyle(color: Colors.white70),
-                    ),
+                    const Text("Don't have an account?", style: TextStyle(color: Colors.white70)),
                     TextButton(
-                      onPressed: () =>
-                          Navigator.pushReplacementNamed(context, '/signup'),
-                      child: const Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: Colors.tealAccent,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      onPressed: () => Navigator.pushReplacementNamed(context, '/signup'),
+                      child: const Text('Sign Up', style: TextStyle(color: Colors.tealAccent, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -275,6 +218,71 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // ===================== Helper Widgets =====================
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData prefixIcon,
+    String? Function(String?)? validator,
+    bool obscureText = false,
+    Widget? suffixIcon,
+    TextInputType? keyboardType,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      validator: validator,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        prefixIcon: Icon(prefixIcon, color: Colors.white),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: const Color(0xFF2C2C2E),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  Widget _buildButton({
+    required String text,
+    required bool loading,
+    required VoidCallback onPressed,
+    Color? backgroundColor,
+    Widget? icon,
+    bool outlined = false,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: outlined
+          ? OutlinedButton.icon(
+              icon: loading
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : icon ?? const SizedBox.shrink(),
+              label: Text(text, style: const TextStyle(color: Colors.white, fontSize: 16)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.white54),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: loading ? null : onPressed,
+            )
+          : ElevatedButton(
+              onPressed: loading ? null : onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: backgroundColor,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: loading
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : Text(text, style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
     );
   }
 }

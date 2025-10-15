@@ -11,22 +11,24 @@ export const getuser = (req: Request, res: Response) => {
     });
 };
 
-export const loginSuccess = async (req: Request, res: Response) => {
+export const loginSuccess = async (req: any, res: any) => {
   try {
-    const passportUser: any = (req as any).user;
+    const passportUser = req.user;
     if (!passportUser) {
       return res.status(401).json({ success: false, message: "Not authenticated" });
     }
 
+    // إنشاء JWT
     const token = jwt.sign(
       { id: passportUser.id, email: passportUser.email, name: passportUser.name },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // ✅ أهم خطوة: إعادة التوجيه إلى تطبيق Flutter (وليس JSON)
-    const redirectUrl = `myapp://callback?token=${token}`;
+    // ✅ إعادة التوجيه إلى رابط HTTP/HTTPS بدلاً من myapp://
+    const redirectUrl = `http://localhost:5000/auth/flutter-callback?token=${token}`;
     return res.redirect(redirectUrl);
+
   } catch (error) {
     console.error("Google login error:", error);
     return res.status(500).json({ success: false, message: "Failed to finalize login" });

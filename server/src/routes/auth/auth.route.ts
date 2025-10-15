@@ -25,6 +25,24 @@ router.get(
   loginSuccess
 );
 
+router.get("/flutter-callback", (req, res) => {
+  const token = req.query.token;
+  res.send(`
+    <html>
+      <body>
+        <h2>Login Successful!</h2>
+        <p>Your token: ${token}</p>
+        <script>
+          // يمكن إرسال token للـ Flutter Webview إذا استخدمت Webview
+          window.opener.postMessage({ token: "${token}" }, "*");
+          window.close();
+        </script>
+      </body>
+    </html>
+  `);
+});
+
+
 router.get("/login/failed", loginFailure);
 router.get("/user", getuser);
 
