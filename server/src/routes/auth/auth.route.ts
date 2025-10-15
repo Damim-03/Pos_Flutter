@@ -42,7 +42,6 @@ router.get("/flutter-callback", (req, res) => {
   `);
 });
 
-
 router.get("/login/failed", loginFailure);
 router.get("/user", getuser);
 

@@ -20,17 +20,26 @@ class _CustomDrawerState extends State<CustomDrawer> {
 
   /// ✅ Fetch user info from backend
   Future<void> _fetchUserData() async {
-    try {
-      final data = await ApiService.getMe();
-      setState(() {
-        _userData = data['user'] ?? data;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-      debugPrint('⚠️ Error fetching user data: $e');
-    }
+  setState(() => _isLoading = true);
+  try {
+    final data = await ApiService.getMe();
+    final user = data['user'] ?? data;
+
+    setState(() {
+      _userData = {
+        'name': user['name'] ?? 'No Name',
+        'email': user['email'] ?? 'No Email',
+        'avatar': user['avatar'] ??
+            'https://www.gravatar.com/avatar/placeholder', // default image
+      };
+      _isLoading = false;
+    });
+  } catch (e) {
+    setState(() => _isLoading = false);
+    debugPrint('⚠️ Error fetching user data: $e');
   }
+}
+
 
   @override
   Widget build(BuildContext context) {

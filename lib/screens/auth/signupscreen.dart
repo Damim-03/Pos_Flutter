@@ -1,7 +1,12 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pos/services/api_service.dart';
+import 'dart:io' show Platform;
+import 'dart:html' as html; //
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -52,50 +57,60 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   // ✅ Google Sign-In (OAuth 2.0 via backend)
-  Future<void> _googleLogin() async {
-  
-  final backendUrl = 'http://localhost:5000/auth/google';
-  
-  const callbackUrlScheme = 'myapp'; // يجب أن يطابق السيرفر
+Future<void> _googleLogin() async {
+  setState(() => _isGoogleLoading = true);
 
   try {
-    setState(() => _isGoogleLoading = true);
+    String? token;
 
-    // 1️⃣ بدء المصادقة
-    final result = await FlutterWebAuth2.authenticate(
-      url: backendUrl,
-      callbackUrlScheme: callbackUrlScheme,
-    );
+    if (!kIsWeb) {
+      // Mobile (Android/iOS)
+      final result = await FlutterWebAuth2.authenticate(
+        url: 'http://localhost:5000/auth/google',
+        callbackUrlScheme: 'myapp', // your mobile scheme
+      );
+      token = Uri.parse(result).queryParameters['token'];
+    } else {
+      // Web
+      final tokenCompleter = Completer<String>();
 
-    // 2️⃣ استخراج التوكن من رابط العودة
-    final uri = Uri.parse(result);
-    final token = uri.queryParameters['token'];
+      void listener(html.Event event) {
+        final messageEvent = event as html.MessageEvent;
+        if (messageEvent.data != null && messageEvent.data['token'] != null) {
+          tokenCompleter.complete(messageEvent.data['token']);
+          html.window.removeEventListener('message', listener);
+        }
+      }
+
+      html.window.addEventListener('message', listener);
+
+      html.window.open('http://localhost:5000/auth/google', '_blank');
+      token = await tokenCompleter.future;
+    }
 
     if (token != null) {
       await _storage.write(key: 'auth_token', value: token);
-
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('✅ Google login successful!')),
       );
-
       Navigator.pushReplacementNamed(context, '/home');
     } else {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('❌ Google login failed (no token).')),
       );
     }
   } catch (e) {
-    debugPrint('Google login error: $e');
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('⚠️ Error: ${e.toString()}')),
+      SnackBar(content: Text('⚠️ Google login error: $e')),
     );
   } finally {
     setState(() => _isGoogleLoading = false);
   }
 }
-
-
   @override
   void dispose() {
     _nameController.dispose();
