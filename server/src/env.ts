@@ -8,3 +8,4 @@ export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 export const SESSION_KEY = process.env.SESSION_KEY!;
 export const SESSION_SECRET = process.env.SESSION_SECRET!;
 export const JWT_SECRET = process.env.JWT_SECRET!;
+export const DATABASE_URL = process.env.DATABASE_URL!;

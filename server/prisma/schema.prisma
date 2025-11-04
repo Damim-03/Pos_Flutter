@@ -1,13 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
-
 
 datasource db {
   provider = "mysql"
@@ -15,11 +8,251 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  googleId  String?  @unique
-  email     String?  @unique
-  password  String? // hashed password for normal users
-  name      String?
-  avatar    String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid()) 
+  name       String
+  email      String   @unique
+  password   String?  
+  googleId   String?  @unique  
+  avatar     String?  
+  provider   String   @default("local") 
+  createdAt  DateTime @default(now())
+}
+
+model category {
+  id               String     @id @default(uuid())
+  name_of_category String     @unique
+  created_at       DateTime?  @default(now())
+  products         products[] // One category has many products
+
+  @@map("category")
+}
+
+model unit {
+  id         String    @id @default(uuid())
+  unit_name  String    @unique
+  created_at DateTime? @default(now())
+
+  @@map("unit")
+}
+
+model products {
+  id                String          @id @default(uuid())
+  barcode           String          @unique
+  product_name      String
+  description       String?
+  price1            Decimal         @default(0.00)
+  price2            Decimal         @default(0.00)
+  price3            Decimal         @default(0.00)
+  unit              String
+  quantity          Int             @default(0)
+  production_date   DateTime?
+  expiration_date   DateTime?
+  image_path        String?
+  category_id       String?         // ✅ changed from Int? → String?
+  status_id         String?         // ✅ changed from Int? → String?
+  category          category?       @relation(fields: [category_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  product_status    product_status? @relation(fields: [status_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  created_at        DateTime?       @default(now())
+
+  purchase_items    purchase_items[]
+  sale_items        sale_items[]
+  client_sales_item client_sales_item[]
+
+  @@map("products")
+}
+
+model purchases {
+  purchase_id       Int                @id @default(autoincrement())
+  purchase_date     DateTime?
+  purchase_time     DateTime?
+  subtotal          Decimal?
+  discount          Decimal?
+  debt              Decimal?
+  total             Decimal?
+  customer_name     String?
+  customer_id       String?
+
+  purchase_payments purchase_payments[]
+  purchase_items    purchase_items[]
+
+  @@map("purchases")
+}
+
+model purchase_payments {
+  payment_id    Int       @id @default(autoincrement())
+  purchase_id   Int
+  total_amount  Float
+  paid_amount   Float
+  change_amount Float
+  payment_date  DateTime? @default(now())
+
+  purchases purchases @relation(fields: [purchase_id], references: [purchase_id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("purchase_payments")
+}
+
+model purchase_items {
+  item_id      Int       @id @default(autoincrement())
+  purchase_id  Int?
+  product_id   String?
+  number       String?
+  product_name String?
+  quantity     Int?
+  price        Decimal?
+  total_price  Decimal?
+
+  purchases purchases? @relation(fields: [purchase_id], references: [purchase_id], onDelete: SetNull, onUpdate: Cascade)
+  products  products?  @relation(fields: [product_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@map("purchase_items")
+}
+
+model sales {
+  sale_id       Int         @id @default(autoincrement())
+  sale_date     DateTime?
+  sale_time     DateTime?
+  subtotal      Decimal?
+  discount      Decimal?
+  debt          Decimal?
+  total         Decimal?
+  customer_name String?
+  customer_id   String?
+
+  sale_items sale_items[]
+  payments   payments[]
+
+  @@map("sales")
+}
+
+model sale_items {
+  item_id      Int       @id @default(autoincrement())
+  sale_id      Int?
+  product_id   String?
+  number       String?
+  product_name String?
+  quantity     Int?
+  price        Decimal?
+  total_price  Decimal?
+
+  sales    sales?    @relation(fields: [sale_id], references: [sale_id], onDelete: SetNull, onUpdate: Cascade)
+  products products? @relation(fields: [product_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@map("sale_items")
+}
+
+model payments {
+  payment_id    Int       @id @default(autoincrement())
+  sale_id       Int
+  total_amount  Float
+  paid_amount   Float
+  change_amount Float
+  payment_date  DateTime? @default(now())
+
+  sales sales @relation(fields: [sale_id], references: [sale_id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("payments")
+}
+
+model product_status {
+  id         String      @id @default(uuid())
+  barcode    String      @unique
+  status     StatusEnum
+  updated_at DateTime?   @default(now())
+  products   products[]
+
+  @@map("product_status")
+}
+
+enum StatusEnum {
+  EXPIRED
+  VALID
+}
+
+model client {
+  customer_id   String          @id
+  customer_name String
+  phone         String?
+  email         String?
+  address       String?
+  image_path    String?
+  created_at    DateTime?       @default(now())
+
+  client_sales    client_sales[]
+  client_debts    client_debts[]
+  client_payments client_payments[]
+
+  @@map("client")
+}
+
+model client_sales {
+  sale_id       Int                @id @default(autoincrement())
+  sale_date     DateTime?
+  sale_time     DateTime?
+  subtotal      Decimal?
+  discount      Decimal?
+  debt          Decimal?
+  total         Decimal?
+  customer_name String?
+  customer_id   String?
+
+  client            client?            @relation(fields: [customer_id], references: [customer_id], onDelete: SetNull, onUpdate: Cascade)
+  client_sales_item client_sales_item[]
+
+  @@map("client_sales")
+}
+
+model client_sales_item {
+  item_id      Int       @id @default(autoincrement())
+  sale_id      Int?
+  product_id   String?
+  number       String?
+  product_name String?
+  quantity     Int?
+  price        Decimal?
+  total_price  Decimal?
+
+  client_sales client_sales? @relation(fields: [sale_id], references: [sale_id], onDelete: SetNull, onUpdate: Cascade)
+  products     products?     @relation(fields: [product_id], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@map("client_sales_item")
+}
+
+model client_debts {
+  debt_id     Int           @id @default(autoincrement())
+  customer_id String
+  amount      Decimal
+  debt_date   DateTime
+  status      DebtStatus    @default(UNPAID)
+  notes       String?
+  created_at  DateTime?     @default(now())
+  updated_at  DateTime?     @updatedAt
+
+  client client @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("client_debts")
+}
+
+model client_payments {
+  payment_id    Int           @id @default(autoincrement())
+  customer_id   String
+  customer_name String
+  amount_paid   Decimal
+  payment_date  DateTime
+  payment_time  DateTime
+  status        PaymentStatus @default(NOT_PAID_STATUS)
+
+  client client @relation(fields: [customer_id], references: [customer_id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("client_payments")
+}
+
+enum DebtStatus {
+  UNPAID          @map("غير_مدفوع")
+  PARTIALLY_PAID  @map("مدفوع_جزئيًا")
+  PAID            @map("مدفوع")
+}
+
+enum PaymentStatus {
+  PAID_STATUS     @map("تم_الدفع")
+  NOT_PAID_STATUS @map("لم_يتم_الدفع")
 }

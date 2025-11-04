@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:pos/services/api_service.dart';
+import 'package:pos/services/auth_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -38,10 +38,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _userData = userData;
         _nameController.text = userData['name'] ?? '';
         _emailController.text = userData['email'] ?? '';
-        _profileImageUrl = userData['avatar'] ??
-            'https://icons8.com/icon/13042/user'; // ✅ default avatar
+      
+        final avatar = userData['avatar'];
+        _profileImageUrl = (avatar != null && avatar.isNotEmpty)
+            ? (avatar.startsWith('http')
+                ? avatar
+                : '${ApiService.baseUrl}$avatar')
+            : 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+      
         _isLoading = false;
       });
+
 
     } catch (e) {
       setState(() => _isLoading = false);
@@ -56,27 +63,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ✅ Save profile updates
   Future<void> _saveProfile() async {
-    try {
-      final updated = await ApiService.updateProfile(_nameController.text);
+  try {
+    // 1️⃣ Call backend API to update the user profile
+    final response = await ApiService.updateProfile(name: _nameController.text);
+
+    if (response['success'] == true) {
+      // 2️⃣ Update local UI immediately — no waiting
+      setState(() {
+        _userData?['name'] = _nameController.text;
+        _isEditing = false; // exit edit mode
+      });
+
+      // 3️⃣ Show success feedback
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Profile updated successfully')),
+        const SnackBar(
+          content: Text('✅ Profile updated successfully'),
+          backgroundColor: Colors.green,
+        ),
       );
-    } catch (e) {
+
+      // 4️⃣ Optional: silently refresh from server (to stay synced)
+      _fetchUserData();
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('⚠️ Failed to update profile: $e')),
+        SnackBar(content: Text('⚠️ ${response['message'] ?? "Update failed"}')),
       );
     }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('⚠️ Failed to update profile: $e')),
+    );
   }
+}
+
 
   // ✅ Logout function
   Future<void> _logout() async {
+  if (!mounted) return;
+
+  // Show confirmation dialog
+  final bool? confirm = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: const Color(0xFF2C2C2E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        '⚠️ Confirm Logout',
+        style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+      ),
+      content: const Text(
+        'Are you sure you want to log out?',
+        style: TextStyle(color: Colors.white70),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false), // Cancel
+          child: const Text('Cancel', style: TextStyle(color: Colors.tealAccent)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true), // Confirm
+          child: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
+        ),
+      ],
+    ),
+  );
+
+  // If user confirmed, perform logout
+  if (confirm == true) {
     await _storage.delete(key: 'token');
+
+
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('🚪 Logged out successfully!')),
     );
+
     Navigator.pushReplacementNamed(context, '/login');
   }
+}
+
 
   @override
   void dispose() {
@@ -170,14 +235,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () {
-                          if (_isEditing) {
-                            _saveProfile();
-                          }
-                          setState(() {
-                            _isEditing = !_isEditing;
-                          });
-                        },
+                       onPressed: () async {
+                         if (_isEditing) {
+                           _saveProfile();
+                         } else {
+                           final updated = await Navigator.pushNamed(
+                             context,
+                             '/profile/update',
+                             arguments: {
+                               'name': _nameController.text,
+                               'email': _emailController.text,
+                               'avatar': _profileImageUrl,
+                             },
+                           );
+                       
+                           // if user updated profile successfully on the other page
+                           if (updated == true) {
+                             _fetchUserData(); // refresh after coming back
+                           }
+                         }
+                       },
                       ),
                     ),
                     const SizedBox(height: 20),

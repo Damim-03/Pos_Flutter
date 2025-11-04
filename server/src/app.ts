@@ -1,9 +1,13 @@
 import express from "express";
+import cors from "cors";
+import bodyParser from "body-parser";
 import passport from "./lib/auth2.0/passport";
 import { sessionMiddleware } from "./lib/auth2.0/session";
 import authRoute from "./routes/auth/auth.route";
-import bodyParser from "body-parser";
-import cors from "cors";
+import categoryRoute from "./routes/product/category.route";
+import productRoute from "./routes/product/product.route";
+import unitRoute from "./routes/product/unit.route";
+
 
 const app = express();
 
@@ -27,5 +31,8 @@ app.use(passport.session());
 
 // Routes
 app.use("/auth", authRoute);
+app.use("/product", productRoute);
+app.use("/category", categoryRoute);
+app.use("/unit", unitRoute);
 
 export default app;

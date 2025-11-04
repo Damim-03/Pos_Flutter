@@ -5,35 +5,47 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from "../../env";
 import { AuthRequest } from "../../middlewares/auth.middleware";
 
-export const getuser = (req: Request, res: Response) => {
-    res.status(200).json({
-        message: "Welcome get user",
-    });
-};
 
 export const loginSuccess = async (req: any, res: any) => {
   try {
-    const passportUser = req.user;
-    if (!passportUser) {
+    const googleUser = req.user;
+
+    if (!googleUser) {
       return res.status(401).json({ success: false, message: "Not authenticated" });
     }
 
-    // إنشاء JWT
+    // Check if user already exists
+    let user = await prisma.user.findUnique({ where: { email: googleUser.email } });
+
+    // Create user if new
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: googleUser.name,
+          email: googleUser.email,
+          googleId: googleUser.id,
+          avatar: googleUser.picture,
+          provider: "google",
+        },
+      });
+    }
+
+    // Generate JWT
     const token = jwt.sign(
-      { id: passportUser.id, email: passportUser.email, name: passportUser.name },
+      { id: user.id, email: user.email, name: user.name },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // ✅ إعادة التوجيه إلى رابط HTTP/HTTPS بدلاً من myapp://
+    // Redirect to Flutter
     const redirectUrl = `http://localhost:5000/auth/flutter-callback?token=${token}`;
     return res.redirect(redirectUrl);
-
   } catch (error) {
     console.error("Google login error:", error);
     return res.status(500).json({ success: false, message: "Failed to finalize login" });
   }
 };
+
 
 export const loginFailure = (req: Request, res: Response) => {
     res.status(401).json({ success: false, message: "Google login failed" });
@@ -126,18 +138,49 @@ export const login = async (req: Request, res: Response) => {
 
 export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
-    const { name } = req.body;
-    if (!name) return res.status(400).json({ success: false, message: "Name is required" });
+    // Check if user is authenticated
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
 
-    const user = await prisma.user.update({
+    const { name, avatar } = req.body;
+
+    if (!name && !avatar) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide at least one field to update (name or avatar)",
+      });
+    }
+
+    // Update user
+    const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
-      data: { name },
-      select: { id: true, email: true, name: true, avatar: true, googleId: true, createdAt: true },
+      data: {
+        ...(name && { name }),
+        ...(avatar && { avatar }),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        googleId: true,
+        provider: true,
+        createdAt: true,
+      },
     });
 
-    return res.status(200).json({ success: true, user });
-  } catch (e) {
-    console.error("Update profile error", e);
-    return res.status(500).json({ success: false, message: "Failed to update profile" });
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("❌ Update profile error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update profile",
+      error: error instanceof Error ? error.message : error,
+    });
   }
 };

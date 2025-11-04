@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:pos/services/api_service.dart';
+import 'package:pos/services/auth_service.dart';
 import 'dart:io' show Platform;
 import 'dart:html' as html; //
 

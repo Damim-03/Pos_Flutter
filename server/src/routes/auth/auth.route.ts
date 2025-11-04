@@ -1,12 +1,10 @@
 import { Router } from "express";
-import { getuser, loginFailure, loginSuccess, signup, login, me, logout, updateProfile } from "../../controller/auth/auth.controller";
+import { loginFailure, loginSuccess, signup, login, me, logout, updateProfile } from "../../controller/auth/auth.controller";
 import passport from "passport";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
 const router = Router();
 
-// basic test route
-router.get("/getUser", getuser);
 
 // email/password auth routes
 router.post("/signup", signup);
@@ -31,9 +29,7 @@ router.get("/flutter-callback", (req, res) => {
     <html>
       <body>
         <h2>Login Successful!</h2>
-        <p>Your token: ${token}</p>
         <script>
-          // يمكن إرسال token للـ Flutter Webview إذا استخدمت Webview
           window.opener.postMessage({ token: "${token}" }, "*");
           window.close();
         </script>
@@ -43,6 +39,5 @@ router.get("/flutter-callback", (req, res) => {
 });
 
 router.get("/login/failed", loginFailure);
-router.get("/user", getuser);
 
 export default router;

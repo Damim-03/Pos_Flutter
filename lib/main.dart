@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pos/screens/profile/profile_upd_screen.dart';
 import './screens/auth/loginscreen.dart';
 import './screens/auth/signupscreen.dart';
 import 'package:pos/screens/home/home_screen.dart';
@@ -49,6 +50,7 @@ class MyApp extends StatelessWidget {
         '/profile': (_) => const ProfileScreen(),
         '/settings': (_) => const SettingsScreen(),
         '/about': (_) => const AboutScreen(),
+        '/profile/update': (_) => ProfileUpdateScreen(),
       },
 
       // 404 fallback route

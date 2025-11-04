@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:pos/services/api_service.dart';
+import 'package:pos/screens/home/home_screen.dart';
+import 'package:pos/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -33,95 +34,113 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ===================== Email/Password Login =====================
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+  if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
-
-    try {
-      final response = await ApiService.login(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
-
-      if (response['success'] == true && response['token'] != null) {
-        await _storage.write(key: 'auth_token', value: response['token']);
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✅ Welcome ${response['user']['name']}!')),
-        );
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ ${response['message'] ?? 'Login failed'}')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ Something went wrong. Please try again.')),
-      );
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // ===================== Google Login =====================
-  Future<void> _googleLogin() async {
-  setState(() => _isGoogleLoading = true);
+  setState(() => _isLoading = true);
 
   try {
-    String? token;
+    final response = await ApiService.login(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
 
-    if (!kIsWeb) {
-      // Mobile (Android/iOS)
-      final result = await FlutterWebAuth2.authenticate(
-        url: 'http://localhost:5000/auth/google',
-        callbackUrlScheme: 'myapp', // your mobile scheme
-      );
-      token = Uri.parse(result).queryParameters['token'];
-    } else {
-      // Web
-      final tokenCompleter = Completer<String>();
+    if (response['success'] == true) {
+      await _storage.write(key: 'auth_token', value: response['token']);
 
-      void listener(html.Event event) {
-        final messageEvent = event as html.MessageEvent;
-        if (messageEvent.data != null && messageEvent.data['token'] != null) {
-          tokenCompleter.complete(messageEvent.data['token']);
-          html.window.removeEventListener('message', listener);
-        }
-      }
-
-      html.window.addEventListener('message', listener);
-
-      html.window.open('http://localhost:5000/auth/google', '_blank');
-      token = await tokenCompleter.future;
-    }
-
-    if (token != null) {
-      await _storage.write(key: 'auth_token', value: token);
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Google login successful!')),
+      // Navigate to /home and pass arguments
+      Navigator.pushReplacementNamed(
+        context,
+        '/home',
+        arguments: {'showLoginSuccess': true},
       );
-      Navigator.pushReplacementNamed(context, '/home');
     } else {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ Google login failed (no token).')),
-      );
+      _showPopup(response['message'] ?? 'Invalid email or password');
     }
   } catch (e) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('⚠️ Google login error: $e')),
-    );
+    _showPopup('⚠️ Something went wrong. Please try again.\nError: $e');
   } finally {
-    setState(() => _isGoogleLoading = false);
+    setState(() => _isLoading = false);
   }
 }
+
+  // ===================== Google Login =====================
+  Future<void> _googleLogin() async {
+    setState(() => _isGoogleLoading = true);
+
+    try {
+      String? token;
+
+      if (!kIsWeb) {
+        final result = await FlutterWebAuth2.authenticate(
+          url: 'http://localhost:5000/auth/google',
+          callbackUrlScheme: 'myapp',
+        );
+        token = Uri.parse(result).queryParameters['token'];
+      } else {
+        final tokenCompleter = Completer<String>();
+
+        void listener(html.Event event) {
+          final messageEvent = event as html.MessageEvent;
+          if (messageEvent.data != null && messageEvent.data['token'] != null) {
+            tokenCompleter.complete(messageEvent.data['token']);
+            html.window.removeEventListener('message', listener);
+          }
+        }
+
+        html.window.addEventListener('message', listener);
+        html.window.open('http://localhost:5000/auth/google', '_blank');
+        token = await tokenCompleter.future;
+      }
+
+      if (token != null) {
+        await _storage.write(key: 'auth_token', value: token);
+        if (!mounted) return;
+
+        // Navigate to HomeScreen and pass flag to show popup
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const HomeScreen(),
+            settings: const RouteSettings(arguments: {'showLoginSuccess': true}),
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        _showPopup('❌ Google login failed (no token).');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showPopup('⚠️ Google login error: $e');
+    } finally {
+      setState(() => _isGoogleLoading = false);
+    }
+  }
+
+  // ===================== Popup Dialog =====================
+  void _showPopup(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2C2C2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '❌ Login Failed',
+          style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+        ),
+        content: Text(message, style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Try Again', style: TextStyle(color: Colors.tealAccent)),
+          ),
+        ],
+      ),
+    );
+  }
 
   // ===================== Build UI =====================
   @override
@@ -139,11 +158,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 const Text(
                   "Welcome Back!",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 40),
 
@@ -168,10 +183,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: Icons.lock_outline,
                   obscureText: !_isPasswordVisible,
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                      color: Colors.white70,
-                    ),
+                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off, color: Colors.white70),
                     onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                   ),
                   validator: (value) {
@@ -183,12 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
 
                 // Login Button
-                _buildButton(
-                  text: 'Login',
-                  loading: _isLoading,
-                  onPressed: _login,
-                  backgroundColor: Colors.teal,
-                ),
+                _buildButton(text: 'Login', loading: _isLoading, onPressed: _login, backgroundColor: Colors.teal),
                 const SizedBox(height: 16),
 
                 // Google Login Button
